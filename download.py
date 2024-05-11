@@ -105,9 +105,9 @@ def download_and_process_video(video_data: Dict, output_dir: str):
     """
     Downloads the video and cuts/crops it into several ones according to the provided time intervals
     """
-    raw_download_path = os.path.join(output_dir, "_videos_raw", f"{video_data['name']}.mp4")
+    raw_download_path = os.path.join(output_dir, "_videos_raw", f"{video_data['name']}")
     raw_download_log_file = os.path.join(output_dir, "_videos_raw", f"{video_data['name']}_download_log.txt")
-    download_result = download_video(video_data["id"], raw_download_path, resolution=video_data["resolution"], log_file=raw_download_log_file)
+    download_result, raw_download_path = download_video(video_data["id"], raw_download_path, resolution=video_data["resolution"], log_file=raw_download_log_file)
 
     if not download_result:
         print("Failed to download", video_data)
@@ -159,19 +159,25 @@ def download_video(video_id, download_path, resolution: int = None, video_format
     # if os.path.isfile(download_path): return True # File already exists
 
     if log_file is None:
-        stderr = subprocess.DEVNULL
+        stderr = subprocess.PIPE
     else:
         stderr = open(log_file, "a")
     video_selection = f"best[ext={video_format}]"
     video_selection = video_selection if resolution is None else f"bestvideo[height={resolution}]+bestaudio/best[ext={video_format}]"
-    command = ["yt-dlp", "https://youtube.com/watch?v={}".format(video_id), "--quiet", "-f", video_selection, "--output", download_path, "--no-continue"]
-    return_code = subprocess.call(command, stderr=stderr)
-    success = return_code == 0
+    command = ["yt-dlp", "https://youtube.com/watch?v={}".format(video_id), "--quiet", "-f", video_selection, "--print", "filename", "--output", f'"{download_path}.%(ext)s"', "--no-continue"]
+    process = subprocess.run(command, stderr=stderr, stdout=subprocess.PIPE, text=True)
+    save_path = process.stdout.strip().strip('"')
+    success = process.returncode == 0
+
+    if success:
+        command = ["yt-dlp", "https://youtube.com/watch?v={}".format(video_id), "--quiet", "-f", video_selection, "--output", save_path, "--no-continue"]
+        process = subprocess.run(command, stderr=stderr, stdout=subprocess.PIPE, text=True)
+        success = process.returncode == 0 and os.path.isfile(save_path)
 
     if log_file is not None:
         stderr.close()
 
-    return success and os.path.isfile(download_path)
+    return success, save_path
 
 
 def get_video_resolution(video_path: os.PathLike) -> int:
@@ -202,7 +208,7 @@ def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int],
     y = int(crop[2] * scale_factor)
     out_h = int(crop[3] * scale_factor)
 
-    command = " ".join(["ffmpeg", "-ss", str(start), "-to", str(end), "-i", raw_video_path, "-strict", "-2", "-loglevel", "quiet", "-qscale", "0", "-y", "-filter:v", f'"crop={out_w}:{out_h}:{x}:{y}"', "-c:a", "copy", output_path])  # Cut arguments  # Some legacy arguments  # Verbosity arguments  # Preserve the quality  # Overwrite if the file exists  # Crop arguments  # Copy audio without re-encoding
+    command = " ".join(["ffmpeg", "-ss", str(start), "-to", str(end), "-i", raw_video_path, "-strict", "-2", "-loglevel", "quiet", "-qscale", "0", "-y", "-filter:v", f'"crop={out_w}:{out_h}:{x}:{y}"', "-c:a", "copy", output_path])
 
     return_code = subprocess.call(command, shell=True)
     success = return_code == 0
