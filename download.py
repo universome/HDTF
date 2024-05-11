@@ -120,6 +120,7 @@ def download_and_process_video(video_data: Dict, output_dir: str):
 
     # We do not know beforehand, what will be the resolution of the downloaded video
     # Youtube-dl selects a (presumably) highest one
+    expected_resolution = int(video_data['resolution'])
     video_resolution = get_video_resolution(raw_download_path)
     if not video_resolution != video_data['resolution']:
         print(f"Downloaded resolution is not correct for {video_data['name']}: {video_resolution} vs {video_data['name']}. Discarding this video.")
@@ -129,7 +130,7 @@ def download_and_process_video(video_data: Dict, output_dir: str):
         start, end = video_data['intervals'][clip_idx]
         clip_name = f'{video_data["name"]}_{clip_idx:03d}'
         clip_path = os.path.join(output_dir, clip_name + '.mp4')
-        crop_success = cut_and_crop_video(raw_download_path, clip_path, start, end, video_data['crops'][clip_idx])
+        crop_success = cut_and_crop_video(raw_download_path, clip_path, start, end, video_data['crops'][clip_idx], expected_resolution, video_resolution)
 
         if not crop_success:
             print(f'Failed to cut-and-crop clip #{clip_idx}', video_data)
@@ -203,10 +204,18 @@ def get_video_resolution(video_path: os.PathLike) -> int:
     return int(output)
 
 
-def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int]):
-    # if os.path.isfile(output_path): return True # File already exists
+def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int], expected_resolution: int, actual_resolution: int):
+    """
+    Crops the video according to the provided coordinates, adjusting the crop based on the actual video resolution.
+    """
+    # Calculate the scaling factor
+    scale_factor = actual_resolution / expected_resolution
 
-    x, out_w, y, out_h = crop
+    # Rescale crop coordinates
+    x = int(crop[0] * scale_factor)
+    out_w = int(crop[1] * scale_factor)
+    y = int(crop[2] * scale_factor)
+    out_h = int(crop[3] * scale_factor)
 
     command = ' '.join([
         "ffmpeg", 
@@ -217,7 +226,7 @@ def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int])
         "-qscale", "0", # Preserve the quality
         "-y", # Overwrite if the file exists
         "-filter:v", f'"crop={out_w}:{out_h}:{x}:{y}"', # Crop arguments
-        "-c:a", "copy",
+        "-c:a", "copy", # Copy audio without re-encoding
         output_path
     ])
 
@@ -228,6 +237,7 @@ def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int])
         print('Command failed:', command)
 
     return success
+
 
 
 if __name__ == "__main__":
