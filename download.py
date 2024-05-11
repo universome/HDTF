@@ -39,7 +39,7 @@ def download_hdtf(source_dir: os.PathLike, output_dir: os.PathLike, num_workers:
         **process_video_kwargs,
      ) for vd in download_queue]
     pool = Pool(processes=num_workers)
-    tqdm_kwargs = dict(total=len(task_kwargs), desc=f'Downloading videos into {output_dir} (note: without sound)')
+    tqdm_kwargs = dict(total=len(task_kwargs), desc=f'Downloading videos into {output_dir}')
 
     for _ in tqdm(pool.imap_unordered(task_proxy, task_kwargs), **tqdm_kwargs):
         pass
@@ -165,8 +165,8 @@ def download_video(video_id, download_path, resolution: int=None, video_format="
         stderr = subprocess.DEVNULL
     else:
         stderr = open(log_file, "a")
-    video_selection = f"bestvideo[ext={video_format}]"
-    video_selection = video_selection if resolution is None else f"{video_selection}[height={resolution}]"
+    video_selection = f"best[ext={video_format}]"
+    video_selection = video_selection if resolution is None else f"bestvideo[height={resolution}]+bestaudio/best[ext={video_format}]"
     command = [
         "yt-dlp",
         "https://youtube.com/watch?v={}".format(video_id), "--quiet", "-f",
@@ -209,13 +209,15 @@ def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int])
     x, out_w, y, out_h = crop
 
     command = ' '.join([
-        "ffmpeg", "-i", raw_video_path,
+        "ffmpeg", 
+        "-ss", str(start), "-to", str(end), # Cut arguments
+        "-i", raw_video_path,
         "-strict", "-2", # Some legacy arguments
         "-loglevel", "quiet", # Verbosity arguments
         "-qscale", "0", # Preserve the quality
         "-y", # Overwrite if the file exists
-        "-ss", str(start), "-to", str(end), # Cut arguments
         "-filter:v", f'"crop={out_w}:{out_h}:{x}:{y}"', # Crop arguments
+        "-c:a", "copy",
         output_path
     ])
 
