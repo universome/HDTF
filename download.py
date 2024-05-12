@@ -10,7 +10,7 @@ Usage:
 $ python download.py --output_dir /tmp/data/hdtf --num_workers 8
 ```
 
-You need tqdm and youtube-dl libraries to be installed for this script to work.
+This script requires the installation of `tqdm` and `yt-dlp`. Ensure these libraries are installed in your environment.
 """
 
 
@@ -29,6 +29,13 @@ subsets = ["RD", "WDA", "WRA"]
 
 
 def download_hdtf(source_dir: os.PathLike, output_dir: os.PathLike, num_workers: int, **process_video_kwargs):
+    """
+    Sets up directories and initializes the download process for the HDTF videos.
+
+    :param source_dir: The directory containing the video URLs and metadata.
+    :param output_dir: The directory where downloaded videos will be saved.
+    :param num_workers: Number of concurrent download processes.
+    """
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, "_videos_raw"), exist_ok=True)
 
@@ -52,6 +59,13 @@ def download_hdtf(source_dir: os.PathLike, output_dir: os.PathLike, num_workers:
 
 
 def construct_download_queue(source_dir: os.PathLike, output_dir: os.PathLike) -> List[Dict]:
+    """
+    Constructs a queue of videos to download based on the available metadata in the source directory.
+
+    :param source_dir: Path to the directory containing metadata files.
+    :param output_dir: Path to the directory where videos should be saved.
+    :return: A list of dictionaries, each containing video data for downloading.
+    """
     download_queue = []
 
     for subset in subsets:
@@ -98,12 +112,23 @@ def construct_download_queue(source_dir: os.PathLike, output_dir: os.PathLike) -
 
 
 def task_proxy(kwargs):
+    """
+       Proxy function to handle the
+
+    multiprocessing of video downloads.
+
+       :param kwargs: Dictionary of keyword arguments for the download_and_process_video function.
+       :return: Output from the download_and_process_video function.
+    """
     return download_and_process_video(**kwargs)
 
 
 def download_and_process_video(video_data: Dict, output_dir: str):
     """
-    Downloads the video and cuts/crops it into several ones according to the provided time intervals
+    Handles the downloading and processing of a single video based on specified intervals and crops.
+
+    :param video_data: Dictionary containing all necessary data for the video download.
+    :param output_dir: Output directory where processed videos will be stored.
     """
     raw_download_path = os.path.join(output_dir, "_videos_raw", f"{video_data['name']}")
     raw_download_log_file = os.path.join(output_dir, "_videos_raw", f"{video_data['name']}_download_log.txt")
@@ -114,16 +139,12 @@ def download_and_process_video(video_data: Dict, output_dir: str):
         print(f"See {raw_download_log_file} for details")
         return
 
-    # We do not know beforehand, what will be the resolution of the downloaded video
-    # Youtube-dl selects a (presumably) highest one
     expected_resolution = int(video_data["resolution"])
     video_resolution = get_video_resolution(raw_download_path)
-    if not video_resolution != video_data["resolution"]:
-        print(f"Downloaded resolution is not correct for {video_data['name']}: {video_resolution} vs {video_data['name']}. Discarding this video.")
-        return
+    if video_resolution != expected_resolution:
+        print(f"Warning: Downloaded resolution is not correct for {video_data['name']}: {video_resolution} vs {expected_resolution}. Adjusting crop coordinates accordingly.")
 
-    for clip_idx in range(len(video_data["intervals"])):
-        start, end = video_data["intervals"][clip_idx]
+    for clip_idx, (start, end) in enumerate(video_data["intervals"]):
         clip_name = f'{video_data["name"]}_{clip_idx:03d}'
         clip_path = os.path.join(output_dir, clip_name + ".mp4")
         crop_success = cut_and_crop_video(raw_download_path, clip_path, start, end, video_data["crops"][clip_idx], expected_resolution, video_resolution)
@@ -135,7 +156,10 @@ def download_and_process_video(video_data: Dict, output_dir: str):
 
 def read_file_as_space_separated_data(filepath: os.PathLike) -> Dict:
     """
-    Reads a file as a space-separated dataframe, where the first column is the index
+    Reads a file as a space-separated dataframe where the first column acts as the key index.
+
+    :param filepath: Path to the file to be read.
+    :return: A dictionary with keys from the first column and values as lists from subsequent columns.
     """
     with open(filepath, "r") as f:
         lines = f.read().splitlines()
@@ -147,23 +171,17 @@ def read_file_as_space_separated_data(filepath: os.PathLike) -> Dict:
 
 def download_video(video_id, download_path, resolution: int = None, video_format="mp4", log_file=None):
     """
-    Download video from YouTube.
-    :param video_id:        YouTube ID of the video.
-    :param download_path:   Where to save the video.
-    :param video_format:    Format to download.
-    :param log_file:        Path to a log file for youtube-dl.
-    :return:                Tuple: path to the downloaded video and a bool indicating success.
+    Downloads a video from YouTube using the `yt-dlp` utility.
 
-    Copy-pasted from https://github.com/ytdl-org/youtube-dl
+    :param video_id: YouTube ID of the video.
+    :param download_path: Path where the video will be saved.
+    :param resolution: Desired resolution of the video.
+    :param video_format: Desired video format.
+    :param log_file: Log file to record download process details.
+    :return: Tuple of (boolean indicating success, path to the downloaded video)
     """
-    # if os.path.isfile(download_path): return True # File already exists
-
-    if log_file is None:
-        stderr = subprocess.PIPE
-    else:
-        stderr = open(log_file, "a")
-    video_selection = f"best[ext={video_format}]"
-    video_selection = video_selection if resolution is None else f"bestvideo[height={resolution}]+bestaudio/best[ext={video_format}]"
+    stderr = open(log_file, "a") if log_file else subprocess.PIPE
+    video_selection = f"best[ext={video_format}]" if resolution is None else f"bestvideo[height={resolution}]+bestaudio/best[ext={video_format}]"
     command = ["yt-dlp", "https://youtube.com/watch?v={}".format(video_id), "--quiet", "-f", video_selection, "--print", "filename", "--output", f'"{download_path}.%(ext)s"', "--no-continue"]
     process = subprocess.run(command, stderr=stderr, stdout=subprocess.PIPE, text=True)
     save_path = process.stdout.strip().strip('"')
@@ -174,15 +192,20 @@ def download_video(video_id, download_path, resolution: int = None, video_format
         process = subprocess.run(command, stderr=stderr, stdout=subprocess.PIPE, text=True)
         success = process.returncode == 0 and os.path.isfile(save_path)
 
-    if log_file is not None:
+    if log_file:
         stderr.close()
 
     return success, save_path
 
 
 def get_video_resolution(video_path: os.PathLike) -> int:
-    command = " ".join(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height", "-of", "csv=p=0", video_path])
+    """
+    Determines the resolution of a video file using `ffprobe`.
 
+    :param video_path: Path to the video file.
+    :return: The resolution (height in pixels) of the video.
+    """
+    command = " ".join(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height", "-of", "csv=p=0", video_path])
     process = Popen(command, stdout=PIPE, shell=True)
     (output, err) = process.communicate()
     return_code = process.wait()
@@ -197,26 +220,26 @@ def get_video_resolution(video_path: os.PathLike) -> int:
 
 def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int], expected_resolution: int, actual_resolution: int):
     """
-    Crops the video according to the provided coordinates, adjusting the crop based on the actual video resolution.
-    """
-    # Calculate the scaling factor
-    scale_factor = actual_resolution / expected_resolution
+    Cuts and crops a video segment from a larger video file according to specified start and end times and crop coordinates, adjusting for any resolution discrepancies.
 
-    # Rescale crop coordinates
-    x = int(crop[0] * scale_factor)
-    out_w = int(crop[1] * scale_factor)
-    y = int(crop[2] * scale_factor)
-    out_h = int(crop[3] * scale_factor)
+    :param raw_video_path: Path to the raw video file.
+    :param output_path: Path where the cropped video will be saved.
+    :param start: Start time of the segment.
+    :param end: End time of the segment.
+    :param crop: Crop coordinates (x, width, y, height).
+    :param expected_resolution: The expected resolution of the video.
+    :param actual_resolution: The actual resolution of the video after download.
+    :return: Boolean indicating the success of the operation.
+    """
+    scale_factor = actual_resolution / expected_resolution  # Calculate scaling factor
+    x, out_w, y, out_h = [int(c * scale_factor) for c in crop]  # Apply scaling to crop coordinates
 
     command = " ".join(["ffmpeg", "-ss", str(start), "-to", str(end), "-i", raw_video_path, "-strict", "-2", "-loglevel", "quiet", "-qscale", "0", "-y", "-filter:v", f'"crop={out_w}:{out_h}:{x}:{y}"', "-c:a", "copy", output_path])
-
     return_code = subprocess.call(command, shell=True)
-    success = return_code == 0
-
-    if not success:
+    if return_code != 0:
         print("Command failed:", command)
-
-    return success
+        return False
+    return True
 
 
 if __name__ == "__main__":
