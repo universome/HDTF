@@ -536,10 +536,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download HDTF dataset")
     parser.add_argument('-s', '--source_dir', type=str, default='HDTF_dataset',
                         help='Path to the directory with the dataset description')
-    parser.add_argument('-o', '--output_dir', type=str,
-                        default='dataset', help='Where to save the videos?')
-    parser.add_argument('-w', '--num_workers', type=int,
-                        default=1, help='Number of workers for downloading.')
+    parser.add_argument('-o', '--output_dir', type=str, default='download',
+                        help='Where to save the videos?')
+    parser.add_argument('-w', '--num_workers', type=int, default=1,
+                        help='Number of workers for downloading.')
     args = parser.parse_args()
 
     download_hdtf(
