@@ -308,7 +308,7 @@ def download_and_process_video(video_data: Dict, output_dir: str):
             raw_download_path, clip_path, start, end, video_data['crops'][clip_idx])
 
         if not crop_success:
-            print(f'{Fore.RED} Failed to cut-and-crop clip #{clip_idx}', video_data)
+            print(f'{Fore.RED} Failed to cut-and-crop clip #{clip_idx}')
             pprint.pprint(video_data, indent=4, sort_dicts=False)
             continue
 
@@ -520,7 +520,7 @@ def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int])
         "-y",  # Overwrite if the file exists
         "-ss", str(start),
         "-to", str(end),
-        "-filter:v", f'"crop={out_w}:{out_h}:{x}:{y}"',  # Crop arguments
+        "-filter:v", f"crop={out_w}:{out_h}:{x}:{y}",  # Crop arguments
         output_path
     ]
     return_code = subprocess.call(command)
