@@ -10,23 +10,25 @@ Usage:
 $ python download.py --output_dir /tmp/data/hdtf --num_workers 8
 ```
 
-You need tqdm and youtube-dl libraries to be installed for this script to work.
+You need tqdm, yt_dlp, and colorama libraries to be installed for this script to work.
 """
-
 
 import os
 import argparse
+import subprocess
+import pprint
 from typing import List, Dict
 from multiprocessing import Pool
-import subprocess
-from subprocess import Popen, PIPE
 from urllib import parse
 
+import yt_dlp
 from tqdm import tqdm
-
+from colorama import init as cinit
+from colorama import Fore
 
 subsets = ["RD", "WDA", "WRA"]
 
+cinit(autoreset=True)
 
 def download_hdtf(source_dir: os.PathLike, output_dir: os.PathLike, num_workers: int, **process_video_kwargs):
     os.makedirs(output_dir, exist_ok=True)
@@ -39,13 +41,15 @@ def download_hdtf(source_dir: os.PathLike, output_dir: os.PathLike, num_workers:
         **process_video_kwargs,
      ) for vd in download_queue]
     pool = Pool(processes=num_workers)
-    tqdm_kwargs = dict(total=len(task_kwargs), desc=f'Downloading videos into {output_dir} (note: without sound)')
+    tqdm_kwargs = dict(total=len(task_kwargs), desc=f'Downloading videos into {output_dir}')
 
     for _ in tqdm(pool.imap_unordered(task_proxy, task_kwargs), **tqdm_kwargs):
         pass
+    pool.close()
+    pool.join()
 
-    print('Download is finished, you can now (optionally) delete the following directories, since they are not needed anymore and occupy a lot of space:')
-    print(' -', os.path.join(output_dir, '_videos_raw'))
+    print(Fore.GREEN+'Download is finished, you can now (optionally) delete the following directories, since they are not needed anymore and occupy a lot of space:')
+    print(Fore.GREEN+' - '+os.path.join(output_dir, '_videos_raw'))
 
 
 def construct_download_queue(source_dir: os.PathLike, output_dir: os.PathLike) -> List[Dict]:
@@ -59,29 +63,32 @@ def construct_download_queue(source_dir: os.PathLike, output_dir: os.PathLike) -
 
         for video_name, (video_url,) in video_urls.items():
             if not f'{video_name}.mp4' in intervals:
-                print(f'Entire {subset}/{video_name} does not contain any clip intervals, hence is broken. Discarding it.')
+                print(f'{Fore.RED}Clip {subset}/{video_name} does not contain any clip intervals. It will be discarded.')
                 continue
 
             if not f'{video_name}.mp4' in resolutions or len(resolutions[f'{video_name}.mp4']) > 1:
-                print(f'Entire {subset}/{video_name} does not contain the resolution (or it is in a bad format), hence is broken. Discarding it.')
+                print(f'{Fore.RED}Clip {subset}/{video_name} does not contain an appropriate resolution (or it is in a bad format). It will be discarded.')
                 continue
 
             all_clips_intervals = [x.split('-') for x in intervals[f'{video_name}.mp4']]
             clips_crops = []
             clips_intervals = []
+            crops_keys=', '.join(crops.keys())
 
             for clip_idx, clip_interval in enumerate(all_clips_intervals):
                 clip_name = f'{video_name}_{clip_idx}.mp4'
                 if not clip_name in crops:
-                    print(f'Clip {subset}/{clip_name} is not present in crops, hence is broken. Discarding it.')
+                    print(f'{Fore.RED}Discarding Clip: {subset}/{clip_name}. Clip is not present in crops.')
                     continue
+                else:
+                    print(f'{Fore.GREEN}Appending Clip:  {subset}/{clip_name}')
                 clips_crops.append(crops[clip_name])
                 clips_intervals.append(clip_interval)
 
             clips_crops = [list(map(int, cs)) for cs in clips_crops]
 
             if len(clips_crops) == 0:
-                print(f'Entire {subset}/{video_name} does not contain any crops, hence is broken. Discarding it.')
+                print(f'{Fore.RED}Discarding {subset}/{video_name}. No cropped versions found.')
                 continue
 
             assert len(clips_intervals) == len(clips_crops)
@@ -111,18 +118,13 @@ def download_and_process_video(video_data: Dict, output_dir: str):
     """
     raw_download_path = os.path.join(output_dir, '_videos_raw', f"{video_data['name']}.mp4")
     raw_download_log_file = os.path.join(output_dir, '_videos_raw', f"{video_data['name']}_download_log.txt")
-    download_result = download_video(video_data['id'], raw_download_path, resolution=video_data['resolution'], log_file=raw_download_log_file)
+    print(f"{Fore.LIGHTBLUE_EX} raw_download_path: {raw_download_path}")
+    
+    download_result = download_video(video_data['id'], raw_download_path, log_file=raw_download_log_file)
 
     if not download_result:
-        print('Failed to download', video_data)
-        print(f'See {raw_download_log_file} for details')
-        return
-
-    # We do not know beforehand, what will be the resolution of the downloaded video
-    # Youtube-dl selects a (presumably) highest one
-    video_resolution = get_video_resolution(raw_download_path)
-    if not video_resolution != video_data['resolution']:
-        print(f"Downloaded resolution is not correct for {video_data['name']}: {video_resolution} vs {video_data['name']}. Discarding this video.")
+        print(f'{Fore.RED} Failed to download {video_data["name"]}')
+        print(f'{Fore.RED} See {raw_download_log_file} for details')
         return
 
     for clip_idx in range(len(video_data['intervals'])):
@@ -132,7 +134,8 @@ def download_and_process_video(video_data: Dict, output_dir: str):
         crop_success = cut_and_crop_video(raw_download_path, clip_path, start, end, video_data['crops'][clip_idx])
 
         if not crop_success:
-            print(f'Failed to cut-and-crop clip #{clip_idx}', video_data)
+            print(f'{Fore.RED} Failed to cut-and-crop clip #{clip_idx}', video_data)
+            pprint.pprint(video_data, indent=4, sort_dicts=False)
             continue
 
 
@@ -147,92 +150,115 @@ def read_file_as_space_separated_data(filepath: os.PathLike) -> Dict:
 
     return data
 
-
-def download_video(video_id, download_path, resolution: int=None, video_format="mp4", log_file=None):
+def download_video(video_id, download_path, resolution: int = None, video_format="bestvideo+bestaudio", log_file=None):
     """
     Download video from YouTube.
     :param video_id:        YouTube ID of the video.
     :param download_path:   Where to save the video.
-    :param video_format:    Format to download.
-    :param log_file:        Path to a log file for youtube-dl.
+    :param resolution:      Desired resolution (not currently used in yt-dlp config).
+    :param video_format:    Format to download (default is best video and audio).
+    :param log_file:        Path to a log file for yt-dlp.
     :return:                Tuple: path to the downloaded video and a bool indicating success.
-
-    Copy-pasted from https://github.com/ytdl-org/youtube-dl
     """
-    # if os.path.isfile(download_path): return True # File already exists
+    
+    class Logger:
+        """
+        A simple logger for yt-dlp to write debug, warning, and error messages to a specified log file.
+        
+        Attributes:
+            log_path (str): Path to the log file where messages will be written.
+        """
+        
+        def __init__(self, log_path):
+            """
+            Initializes the Logger with a log file path.
+            
+            :param log_path: Path to the file where log messages should be saved.
+            """
+            self.log_path = log_path
 
-    if log_file is None:
-        stderr = subprocess.DEVNULL
-    else:
-        stderr = open(log_file, "a")
-    video_selection = f"bestvideo[ext={video_format}]"
-    video_selection = video_selection if resolution is None else f"{video_selection}[height={resolution}]"
-    command = [
-        "youtube-dl",
-        "https://youtube.com/watch?v={}".format(video_id), "--quiet", "-f",
-        video_selection,
-        "--output", download_path,
-        "--no-continue"
-    ]
-    return_code = subprocess.call(command, stderr=stderr)
-    success = return_code == 0
+        def debug(self, msg):
+            """
+            Logs a debug message.
+            
+            :param msg: The debug message to log.
+            """
+            with open(self.log_path, "a") as f:
+                f.write(f"DEBUG: {msg}\n")
 
-    if log_file is not None:
-        stderr.close()
+        def warning(self, msg):
+            """
+            Logs a warning message.
+            
+            :param msg: The warning message to log.
+            """
+            with open(self.log_path, "a") as f:
+                f.write(f"WARNING: {msg}\n")
 
-    return success and os.path.isfile(download_path)
+        def error(self, msg):
+            """
+            Logs an error message.
+            
+            :param msg: The error message to log.
+            """
+            with open(self.log_path, "a") as f:
+                f.write(f"ERROR: {msg}\n")
 
-
-def get_video_resolution(video_path: os.PathLike) -> int:
-    command = ' '.join([
-        "ffprobe",
-        "-v", "error",
-        "-select_streams", "v:0", "-show_entries", "stream=height", "-of", "csv=p=0",
-        video_path
-    ])
-
-    process = Popen(command, stdout=PIPE, shell=True)
-    (output, err) = process.communicate()
-    return_code = process.wait()
-    success = return_code == 0
-
-    if not success:
-        print('Command failed:', command)
-        return -1
-
-    return int(output)
-
+    # Define yt-dlp options
+    ydl_opts = {
+        'format': video_format,             # Set video format to best video and audio by default
+        'outtmpl': download_path,           # Output path template
+        'quiet': True,                      # Suppress verbose output
+        'merge_output_format': 'mp4',       # Ensure output format is MP4
+    }
+    
+    # If a log file is specified, configure the logger
+    if log_file:
+        ydl_opts['logger'] = Logger(log_file)
+    
+    # Download the video using yt-dlp
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f'https://www.youtube.com/watch?v={video_id}'])
+        success = True
+    except Exception as e:
+        success = False
+        if log_file:
+            with open(log_file, "a") as f:
+                f.write(f"ERROR: Failed to download {video_id}. Exception: {str(e)}\n")
+    
+    result = success and os.path.isfile(download_path)
+    return download_path, result
 
 def cut_and_crop_video(raw_video_path, output_path, start, end, crop: List[int]):
     # if os.path.isfile(output_path): return True # File already exists
 
     x, out_w, y, out_h = crop
 
-    command = ' '.join([
+    command = [
         "ffmpeg", "-i", raw_video_path,
         "-strict", "-2", # Some legacy arguments
         "-loglevel", "quiet", # Verbosity arguments
         "-qscale", "0", # Preserve the quality
         "-y", # Overwrite if the file exists
-        "-ss", str(start), "-to", str(end), # Cut arguments
+        "-ss", str(start), 
+        "-to", str(end),
         "-filter:v", f'"crop={out_w}:{out_h}:{x}:{y}"', # Crop arguments
         output_path
-    ])
-
-    return_code = subprocess.call(command, shell=True)
+    ]
+    return_code = subprocess.call(command)
     success = return_code == 0
 
     if not success:
-        print('Command failed:', command)
+        print(f'{Fore.RED} Command failed: {" ".join(command)}')
 
     return success
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download HDTF dataset")
-    parser.add_argument('-s', '--source_dir', type=str, default='HDTF_dataset', help='Path to the directory with the dataset')
-    parser.add_argument('-o', '--output_dir', type=str, help='Where to save the videos?')
-    parser.add_argument('-w', '--num_workers', type=int, default=8, help='Number of workers for downloading')
+    parser.add_argument('-s', '--source_dir', type=str, default='HDTF_dataset', help='Path to the directory with the dataset description')
+    parser.add_argument('-o', '--output_dir', type=str, default='dataset', help='Where to save the videos?')
+    parser.add_argument('-w', '--num_workers', type=int, default=1, help='Number of workers for downloading.')
     args = parser.parse_args()
 
     download_hdtf(
