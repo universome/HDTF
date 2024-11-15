@@ -1,5 +1,3 @@
-
-
 # HDTF
 <<<<<<< HEAD
 Flow-guided One-shot Talking Face Generation with a High-resolution Audio-visual Dataset 
@@ -17,7 +15,6 @@ Flow-guided One-shot Talking Face Generation with a High-resolution Audio-visual
 **./HDTF_dataset** consists of *youtube video url*, *video resolution* (in our method, may not be the best resolution), *time stamps of talking face*, *facial region* (in the our method) and *the zoom scale* of the cropped window.
 **xx_video_url.txt:**
 >>>>>>> 8c402f4 (doc: add the downloading instructions)
-
 
 ```
 format:     video name | video youtube url
