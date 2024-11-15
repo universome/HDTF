@@ -1,12 +1,20 @@
-
 # HDTF
+<<<<<<< HEAD
+Flow-guided One-shot Talking Face Generation with a High-resolution Audio-visual Dataset 
+<a href="https://openaccess.thecvf.com/content/CVPR2021/papers/Zhang_Flow-Guided_One-Shot_Talking_Face_Generation_With_a_High-Resolution_Audio-Visual_Dataset_CVPR_2021_paper.pdf" target="_blank">paper</a>    <a href="https://github.com/MRzzm/HDTF/blob/main/Supplementary%20Materials.pdf" target="_blank">supplementary</a>   [demo video](https://www.youtube.com/watch?v=uJdBgWYBTww)
+
+## Details of HDTF dataset
+**./HDTF_dataset** consists of *youtube video url*, *video resolution* (in our method, may not be the best resolution), *time stamps of talking face*, *facial region* (in the our method) and *the zoom scale* of the cropped window.
+
+**xx_video_url.txt:** 
+=======
 Flow-guided One-shot Talking Face Generation with a High-resolution Audio-visual Dataset
 <a href="https://openaccess.thecvf.com/content/CVPR2021/papers/Zhang_Flow-Guided_One-Shot_Talking_Face_Generation_With_a_High-Resolution_Audio-Visual_Dataset_CVPR_2021_paper.pdf" target="_blank">paper</a>    <a href="https://github.com/MRzzm/HDTF/blob/main/Supplementary%20Materials.pdf" target="_blank">supplementary</a>
 
 ## Details of HDTF dataset
 **./HDTF_dataset** consists of *youtube video url*, *video resolution* (in our method, may not be the best resolution), *time stamps of talking face*, *facial region* (in the our method) and *the zoom scale* of the cropped window.
 **xx_video_url.txt:**
-
+>>>>>>> 8c402f4 (doc: add the downloading instructions)
 
 ```
 format:     video name | video youtube url
@@ -44,7 +52,20 @@ When using HDTF dataset,
 - We resize all cropped videos into **512 x 512** resolution.
 
 
-The HDTF dataset is available to download under a <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank"> Creative Commons Attribution 4.0 International License</a>. If you face any problems when processing HDTF, pls contact me.
+The HDTF dataset is available to download under a <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank"> Creative Commons Attribution 4.0 International License</a>. **Thanks @universome for provding the the script of data processing, pls visit [here](https://github.com/universome/HDTF) for more details.** If you face any problems when processing HDTF, pls contact me.
+
+## Inference code
+#### code of audio-to-animation
+coming soon......
+
+#### code of constructing approximate dense flow
+The code is in **./code_constructing_Fapp**, pls visit [here](https://github.com/MRzzm/HDTF/tree/main/code_constructing_Fapp) for more details. 
+
+#### code of animation-to-video module
+The code is in **./code_animation2video**, pls visit [here](https://github.com/MRzzm/HDTF/tree/main/code_animation2video) for more details. 
+
+#### code of reproducing other works
+coming soon......
 
 ## Downloading
 For convenience, we added the `download.py` script which downloads, crops and resizes the dataset. You can use it via the following command:
